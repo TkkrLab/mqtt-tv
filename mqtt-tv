@@ -1,0 +1,144 @@
+#!/usr/bin/python3
+
+mqtt_server = "mrmeeseeks.tkkrlab"
+mqtt_port   = 1883
+mqtt_topic  = "tkkrlab/tv"
+
+serial_port = "/dev/ttyUSB0"
+serial_baud = 57600
+
+import sys, time
+
+try:
+  import paho.mqtt.client as paho
+except:
+  print("The Paho MQTT module for Python has not been installed.")
+  print("Please install the Paho MQTT module by running the following command: ")
+  print("'yaourt -Syyu python-paho-mqtt'")
+  sys.exit(1)
+
+try:
+  import serial
+except:
+  print("Please install pyserial.")
+  sys.exit(1)
+
+#------
+# MQTT functions
+def on_connect(mosq, userdata, flags, rc):
+  global mqtt_topic
+  if (rc==0):
+    mosq.subscribe(mqtt_topic+"/mode", 0)
+    mosq.subscribe(mqtt_topic+"/volume", 0)
+  else:
+    print("Fatal error: Could not connect to the MQTT server. (rc="+str(rc)+")")
+    sys.exit(1)
+
+def on_subscribe(mosq, obj, mid, granted_qos):
+    print("[MQTT] Subscribed.")
+
+def on_log(mosq, obj, level, string):
+    print("[MQTT] "+string)
+    
+def on_message(mosq, obj, msg):
+  try:
+      input_string = msg.payload.decode('utf-8')
+  except:
+      return
+  print("Received: ",msg.topic,input_string)
+  global mqtt_topic
+  if (msg.topic==mqtt_topic+"/mode"):
+    tvMode(input_string)
+  if (msg.topic==mqtt_topic+"/volume"):
+    tvVolume(input_string)
+
+#-----
+# TV commands
+def tvMode(mode):
+  serialSend("\x1b\x24001E;") #Poll the TV (required before sending actual command)
+  time.sleep(0.05)
+  if (mode=="off") or (mode=="0"):
+    print("TV mode set to OFF")
+    serialSend("\x1b\x24001MSB01;") #Standby ON
+  elif (mode=="dvi") or (mode=="1"):
+    print("TV mode set to DVI")
+    serialSend("\x1b\x24001MSB00;") #Turn the TV on
+    time.sleep(0.05)
+    serialSend("\x1b\x24001PIS01;") #Input: PC digital DVI
+  elif (mode=="vga") or (mode=="2"):
+    print("TV mode set to VGA")
+    serialSend("\x1b\x24001MSB00;") #Turn the TV on
+    time.sleep(0.05)
+    serialSend("\x1b\x24001PIS00;") #Input: PC analog VGA
+  elif (mode=="hdcp") or (mode=="3"):
+    print("TV mode set to HDCP")
+    serialSend("\x1b\x24001MSB00;") #Turn the TV on   
+    time.sleep(0.05)
+    serialSend("\x1b\x24001PIS02;") #Input: DVI / HDCP
+  elif (mode=="cvbs") or (mode=="4"):
+    print("TV mode set to CVBS")
+    serialSend("\x1b\x24001MSB00;") #Turn the TV on
+    time.sleep(0.05)
+    serialSend("\x1b\x24001PIS04;") #Input: CVBS
+  elif (mode=="s-video") or (mode=="5"):
+    print("TV mode set to S-VIDEO")
+    serialSend("\x1b\x24001MSB00;") #Turn the TV on   
+    time.sleep(0.05)
+    serialSend("\x1b\x24001PIS05;") #Input: S-Video
+  elif (mode=="ext") or (mode=="6"):
+    print("TV mode set to EXT")
+    serialSend("\x1b\x24001MSB00;") #Turn the TV on      
+    time.sleep(0.05)
+    serialSend("\x1b\x24001PIS06;") #Input: EXT
+
+def tvVolume(volume):
+  volume = round(int(volume)*64/100)
+  if (volume>64):
+     volume = 64
+  if (volume<0):
+     volume = 0
+  if (volume<10):
+    volume = "0"+str(volume)
+  else:
+    volume = str(volume)
+  serialSend("\x1b\x24001E;") #Poll the TV (required before sending actual command)
+  time.sleep(0.05)
+  serialSend("\x1b\x24001AVO"+volume+";") #Set volume
+  time.sleep(0.05)
+  if (volume=="00"):
+    serialSend("\x1b\x24001AMU01;")
+  else:
+    serialSend("\x1b\x24001AMU00;")
+  print("Volume set to "+volume+"\x24001AVO"+volume+";")
+  
+
+#-----
+# Serial port functions
+def serialSend(data):
+  global ser
+  ser.write(data.encode("ascii"))
+  pass
+
+def serialReceive(ser):
+  data = ser.read(8)
+  print("Serial RX: ",data)
+
+#-----
+# Control functions
+def main(mqtt_server, mqtt_port, serial_port, serial_baud):
+  print("Phillips TV controller")
+  print("For BDL4221V TV")
+  print("Renze Nicolai 2018")
+  mqttc = paho.Client()
+  mqttc.on_message = on_message
+  mqttc.on_connect = on_connect
+  mqttc.on_subscribe = on_subscribe
+  print("[DEBUG] Connecting to MQTT server ("+mqtt_server+":"+str(mqtt_port)+")...")
+  mqttc.connect(mqtt_server, mqtt_port, 60)
+  mqttc.loop_start()
+  global ser
+  ser = serial.Serial(serial_port, serial_baud)
+  while True:
+    serialReceive(ser)
+
+main(mqtt_server, mqtt_port, serial_port, serial_baud)
