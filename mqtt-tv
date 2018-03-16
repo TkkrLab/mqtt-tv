@@ -49,6 +49,12 @@ def on_message(mosq, obj, msg):
   global mqtt_topic
   if (msg.topic==mqtt_topic+"/mode"):
     tvMode(input_string)
+    time.sleep(2)
+    tvMode(input_string)
+    time.sleep(2)
+    tvMode(input_string)
+    time.sleep(2)
+    tvMode(input_string)
   if (msg.topic==mqtt_topic+"/volume"):
     tvVolume(input_string)
 
@@ -129,6 +135,9 @@ def main(mqtt_server, mqtt_port, serial_port, serial_baud):
   print("Phillips TV controller")
   print("For BDL4221V TV")
   print("Renze Nicolai 2018")
+  global ser
+  print("[DEBUG] Opening serial port...")
+  ser = serial.Serial(serial_port, serial_baud)
   mqttc = paho.Client()
   mqttc.on_message = on_message
   mqttc.on_connect = on_connect
@@ -136,8 +145,6 @@ def main(mqtt_server, mqtt_port, serial_port, serial_baud):
   print("[DEBUG] Connecting to MQTT server ("+mqtt_server+":"+str(mqtt_port)+")...")
   mqttc.connect(mqtt_server, mqtt_port, 60)
   mqttc.loop_start()
-  global ser
-  ser = serial.Serial(serial_port, serial_baud)
   while True:
     serialReceive(ser)
 
